@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/theme/app_theme.dart';
+import 'features/notes/presentation/home_screen.dart';
+
 void main() {
   runApp(
     const ProviderScope(
@@ -17,15 +20,8 @@ class SonarNotesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Sonar Notes',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const Scaffold(
-        body: Center(
-          child: Text('Sonar Notes'),
-        ),
-      ),
+      theme: AppTheme.darkTheme,
+      home: const HomeScreen(),
     );
   }
 }
