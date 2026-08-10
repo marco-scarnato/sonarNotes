@@ -1,0 +1,44 @@
+name: sonar_notes
+description: "Cross-platform application for audio recording, transcription, and smart notes."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio & Speech-to-Text
+  record: ^5.2.1
+  audioplayers: ^6.0.0
+  speech_to_text: ^7.0.0
+
+  # Local Database
+  sqflite: ^2.3.3+1
+  path_provider: ^2.1.3
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+
+  # Utility & UI
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10+1
+  lottie: ^3.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+  # Testing & Dev
+  mocktail: ^1.0.4
+  build_runner: ^2.4.9
+
+dependency_overrides:
+  record_linux: 1.3.1
+
+flutter:
+  uses-material-design: true
