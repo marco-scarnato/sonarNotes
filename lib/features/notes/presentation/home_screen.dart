@@ -52,6 +52,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final playerManager = ref.watch(audioPlayerManagerProvider);
     final activeNoteId = ref.watch(activePlayingNoteIdProvider);
 
+    final searchQuery = ref.watch(notesSearchQueryProvider);
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -72,7 +74,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(
             child: notesAsync.when(
               data: (notes) => notes.isEmpty
-                  ? _buildEmptyState()
+                  ? _buildEmptyState(searchQuery)
                   : _buildNotesList(notes, playerManager, activeNoteId),
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Center(
@@ -139,7 +141,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String query) {
+    final isSearching = query.trim().isNotEmpty;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -147,27 +151,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.surfaceLight.withValues(alpha: 0.3),
+                color: AppTheme.primary.withValues(alpha: 0.12),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.3),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.15),
+                    blurRadius: 24,
+                    spreadRadius: 4,
+                  ),
+                ],
               ),
-              child: const Icon(
-                Icons.mic_none_outlined,
+              child: Icon(
+                isSearching ? Icons.search_off_rounded : Icons.mic_none_rounded,
                 size: 64,
                 color: AppTheme.primaryLight,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text(
-              'Nessuna nota vocale',
-              style: Theme.of(context).textTheme.titleLarge,
+              isSearching ? 'Nessun risultato trovato' : 'Nessuna nota salvata',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Premi il pulsante "REC" in basso per iniziare a registrare una nuova nota vocale in PCM 16kHz.',
+            const SizedBox(height: 10),
+            Text(
+              isSearching
+                  ? 'Nessuna nota corrisponde alla ricerca "$query". Prova con parole chiave diverse.'
+                  : 'Il tuo archivio è vuoto. Premi il pulsante "REC" in basso a destra per registrare la tua prima nota vocale.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                height: 1.5,
+                fontSize: 14,
+              ),
             ),
           ],
         ),

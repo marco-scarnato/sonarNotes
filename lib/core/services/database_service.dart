@@ -43,6 +43,7 @@ class DatabaseService {
       path,
       version: 1,
       onCreate: _onCreate,
+      onOpen: _onOpen,
     );
     return _db!;
   }
@@ -52,11 +53,10 @@ class DatabaseService {
     return p.join(docsDir.path, 'sonar_notes.db');
   }
 
-  /// Creates database schema and FTS5 index tables + triggers.
+  /// Creates core database schema and attempts FTS5 setup.
   static Future<void> _onCreate(Database db, int version) async {
-    // Main notes table
     await db.execute('''
-      CREATE TABLE notes (
+      CREATE TABLE IF NOT EXISTS notes (
         id TEXT PRIMARY KEY,
         timestamp INTEGER NOT NULL,
         duration INTEGER NOT NULL,
@@ -69,41 +69,67 @@ class DatabaseService {
       );
     ''');
 
-    // FTS5 Virtual Table for Full-Text Search
+    await _setupFTS5(db);
+  }
+
+  static Future<void> _onOpen(Database db) async {
     await db.execute('''
-      CREATE VIRTUAL TABLE notes_fts USING fts5(
-        note_id UNINDEXED,
-        transcript,
-        title,
-        summary
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        duration INTEGER NOT NULL,
+        audio_path TEXT NOT NULL,
+        transcript TEXT,
+        title TEXT,
+        summary TEXT,
+        action_items TEXT,
+        status TEXT NOT NULL
       );
     ''');
+  }
 
-    // Trigger on INSERT: sync to FTS5
-    await db.execute('''
-      CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN
-        INSERT INTO notes_fts(note_id, transcript, title, summary)
-        VALUES (new.id, COALESCE(new.transcript, ''), COALESCE(new.title, ''), COALESCE(new.summary, ''));
-      END;
-    ''');
+  static Future<void> _setupFTS5(Database db) async {
+    try {
+      await db.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+          note_id UNINDEXED,
+          transcript,
+          title,
+          summary
+        );
+      ''');
 
-    // Trigger on DELETE: sync to FTS5
-    await db.execute('''
-      CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
-        DELETE FROM notes_fts WHERE note_id = old.id;
-      END;
-    ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+          INSERT INTO notes_fts(note_id, transcript, title, summary)
+          VALUES (new.id, COALESCE(new.transcript, ''), COALESCE(new.title, ''), COALESCE(new.summary, ''));
+        END;
+      ''');
 
-    // Trigger on UPDATE: sync to FTS5
-    await db.execute('''
-      CREATE TRIGGER notes_au AFTER UPDATE ON notes BEGIN
-        UPDATE notes_fts 
-        SET transcript = COALESCE(new.transcript, ''),
-            title = COALESCE(new.title, ''),
-            summary = COALESCE(new.summary, '')
-        WHERE note_id = old.id;
-      END;
-    ''');
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+          DELETE FROM notes_fts WHERE note_id = old.id;
+        END;
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+          UPDATE notes_fts 
+          SET transcript = COALESCE(new.transcript, ''),
+              title = COALESCE(new.title, ''),
+              summary = COALESCE(new.summary, '')
+          WHERE note_id = old.id;
+        END;
+      ''');
+    } catch (e) {
+      debugPrint('FTS5 extension not supported on system SQLite: $e. Falling back to LIKE queries.');
+      try {
+        await db.execute('DROP TRIGGER IF EXISTS notes_ai;');
+        await db.execute('DROP TRIGGER IF EXISTS notes_ad;');
+        await db.execute('DROP TRIGGER IF EXISTS notes_au;');
+        await db.execute('DROP TABLE IF EXISTS notes_fts;');
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -167,30 +193,38 @@ class DatabaseService {
   }
 
   // ---------------------------------------------------------------------------
-  // Full-Text Search (FTS5)
+  // Full-Text Search (FTS5 with LIKE fallback)
   // ---------------------------------------------------------------------------
 
-  /// Searches notes matching [query] using the FTS5 index on transcript, title, and summary.
-  /// If [query] is empty or whitespace, returns all notes.
+  /// Searches notes matching [query] using FTS5 index if available, or falls back to LIKE search.
   Future<List<Note>> searchNotes(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return getAllNotes();
 
     final db = await database;
 
-    // Format FTS5 query: append wildcard '*' to match partial words if desired
-    // Sanitizes input quote chars for safety
-    final sanitizedQuery = trimmed.replaceAll("'", "''");
-    final ftsQuery = '$sanitizedQuery*';
+    try {
+      final sanitizedQuery = trimmed.replaceAll("'", "''");
+      final ftsQuery = '$sanitizedQuery*';
 
-    final maps = await db.rawQuery('''
-      SELECT n.* FROM notes n
-      INNER JOIN notes_fts fts ON n.id = fts.note_id
-      WHERE notes_fts MATCH '$ftsQuery'
-      ORDER BY n.timestamp DESC;
-    ''');
+      final maps = await db.rawQuery('''
+        SELECT n.* FROM notes n
+        INNER JOIN notes_fts fts ON n.id = fts.note_id
+        WHERE notes_fts MATCH '$ftsQuery'
+        ORDER BY n.timestamp DESC;
+      ''');
 
-    return maps.map((m) => Note.fromMap(m)).toList();
+      return maps.map((m) => Note.fromMap(m)).toList();
+    } catch (e) {
+      // Fallback search using LIKE query if FTS5 is not available on device
+      final pattern = '%${trimmed.replaceAll("'", "''")}%';
+      final maps = await db.rawQuery('''
+        SELECT * FROM notes
+        WHERE title LIKE '$pattern' OR transcript LIKE '$pattern' OR summary LIKE '$pattern'
+        ORDER BY timestamp DESC;
+      ''');
+      return maps.map((m) => Note.fromMap(m)).toList();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -198,14 +232,12 @@ class DatabaseService {
   // ---------------------------------------------------------------------------
 
   /// Returns a stream emitting updated lists of [Note] entities on change.
-  Stream<List<Note>> watchAllNotes() {
-    // Immediately emit current notes on subscribe
-    getAllNotes().then((notes) {
-      if (!_notesStreamController.isClosed) {
-        _notesStreamController.add(notes);
-      }
-    });
-    return _notesStreamController.stream;
+  Stream<List<Note>> watchAllNotes() async* {
+    // 1. Immediately yield initial list of notes from DB upon subscription
+    yield await getAllNotes();
+
+    // 2. Yield subsequent updates whenever CRUD operations notify stream
+    yield* _notesStreamController.stream;
   }
 
   Future<void> _notifyNotesChanged() async {
