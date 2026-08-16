@@ -56,7 +56,7 @@ class AppTheme {
       ),
 
       // Cards
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: surface,
         elevation: 3,
         shadowColor: Colors.black45,
@@ -113,7 +113,7 @@ class AppTheme {
       ),
 
       // Tab Bar
-      tabBarTheme: TabBarTheme(
+      tabBarTheme: TabBarThemeData(
         labelColor: primaryLight,
         unselectedLabelColor: textSecondary,
         indicatorColor: primary,

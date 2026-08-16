@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.9.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -14,7 +14,7 @@ dependencies:
   # Audio & Speech-to-Text
   record: ^5.2.1
   audioplayers: ^6.0.0
-  speech_to_text: ^7.0.0
+  whisper_ggml_plus: ^1.5.2
 
   # Local Database
   sqflite: ^2.3.3+1

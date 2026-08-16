@@ -8,6 +8,7 @@ import '../../audio_recording/presentation/live_recording_screen.dart';
 import '../data/notes_providers.dart';
 import '../domain/note.dart';
 import '../domain/note_status.dart';
+import '../../speech_to_text/presentation/spike_whisper_screen.dart';
 import 'note_detail_screen.dart';
 
 /// Screen 1: Home / Feed Screen (Task 5).
@@ -64,6 +65,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Text('Sonar Notes'),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.science_outlined, color: AppTheme.accent),
+            tooltip: 'Spike 1-AI Whisper FFI',
+            onPressed: () => SpikeWhisperScreen.show(context),
+          ),
+        ],
       ),
       body: Column(
         children: [
